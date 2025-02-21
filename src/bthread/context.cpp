@@ -341,36 +341,37 @@ __asm (
 ".type bthread_jump_fcontext,@function\n"
 ".align 16\n"
 "bthread_jump_fcontext:\n"
-"    pushq  %rbp  \n"
-"    pushq  %rbx  \n"
+"    pushq  %rbp  \n"                       // 保存 old-task 寄存器
+"    pushq  %rbx  \n"                       
 "    pushq  %r15  \n"
 "    pushq  %r14  \n"
 "    pushq  %r13  \n"
 "    pushq  %r12  \n"
-"    leaq  -0x8(%rsp), %rsp\n"
+"    leaq  -0x8(%rsp), %rsp\n"              // 栈顶 预留8字节 存放
 "    cmp  $0, %rcx\n"
 "    je  1f\n"
 "    stmxcsr  (%rsp)\n"
 "    fnstcw   0x4(%rsp)\n"
 "1:\n"
-"    movq  %rsp, (%rdi)\n"
-"    movq  %rsi, %rsp\n"
+"    movq  %rsp, (%rdi)\n"                  // old-task.context (栈顶指针) 保存当前%rsp
+"    movq  %rsi, %rsp\n"                    // new-task.context 存入%rsp
 "    cmp  $0, %rcx\n"
 "    je  2f\n"
 "    ldmxcsr  (%rsp)\n"
 "    fldcw  0x4(%rsp)\n"
 "2:\n"
-"    leaq  0x8(%rsp), %rsp\n"
-"    popq  %r12  \n"
+"    leaq  0x8(%rsp), %rsp\n"               // 跳过 栈顶8字节(之前预留)
+"    popq  %r12  \n"                        // 恢复new-task 上下文
 "    popq  %r13  \n"
 "    popq  %r14  \n"
 "    popq  %r15  \n"
 "    popq  %rbx  \n"
-"    popq  %rbp  \n"
-"    popq  %r8\n"
-"    movq  %rdx, %rax\n"
-"    movq  %rdx, %rdi\n"
-"    jmp  *%r8\n"
+"    popq  %rbp  \n"                        
+"    popq  %r8\n"                           // 如果new-task为新bthread 此处为entry，
+                                            // 如果new-task已经被执行过此处为new-task上次被切换时存储的下一个指令
+"    movq  %rdx, %rax\n"                    // 返回值为0
+"    movq  %rdx, %rdi\n"                    // 用当前的skip_remained 参数给要调用的函数做为第一个参数
+"    jmp  *%r8\n"                           // 跳转到%r8内存储的指令处开始执行
 ".size bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
 ".previous\n"
@@ -385,13 +386,13 @@ __asm (
 ".type bthread_make_fcontext,@function\n"
 ".align 16\n"
 "bthread_make_fcontext:\n"
-"    movq  %rdi, %rax\n"
-"    andq  $-16, %rax\n"
-"    leaq  -0x48(%rax), %rax\n"
-"    movq  %rdx, 0x38(%rax)\n"
-"    stmxcsr  (%rax)\n"
-"    fnstcw   0x4(%rax)\n"
-"    leaq  finish(%rip), %rcx\n"
+"    movq  %rdi, %rax\n"            // 栈底地址 -> %rax
+"    andq  $-16, %rax\n"            // 16位对齐
+"    leaq  -0x48(%rax), %rax\n"     // %rax 向栈顶挪72字节
+"    movq  %rdx, 0x38(%rax)\n"      // %rdx = 栈顶 - 56 字节
+"    stmxcsr  (%rax)\n"             // 
+"    fnstcw   0x4(%rax)\n"          
+"    leaq  finish(%rip), %rcx\n"    // finish 地址 -> 栈顶 - 64字节
 "    movq  %rcx, 0x40(%rax)\n"
 "    ret \n"
 "finish:\n"
